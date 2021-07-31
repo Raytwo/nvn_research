@@ -1,5 +1,6 @@
 use core::panic;
 use std::ffi::CStr;
+use nvn::ClearColorMask;
 use skyline::{hook, install_hook, install_hooks};
 
 pub static mut DEVICE_INITIALIZE_OFFS: *const u8 = 0 as _;
@@ -81,7 +82,7 @@ pub fn queue_submit_commands(queue: &nvn::Queue, count: usize, handles: *mut nvn
         let texture = unsafe { TEXTURES[TEXTURE_IDX as usize] };
         let render_target: [*const nvn::Texture;1] = [texture];
 
-        // Copy all the handles in a vector for ease of use
+        // Clone all the handles in a vector for ease of use
         let mut command_handles = unsafe { std::slice::from_raw_parts_mut(handles, count) };
         let mut new_handles: Vec<nvn::CommandHandle> = vec![];
         new_handles.extend_from_slice(command_handles);
@@ -113,21 +114,25 @@ pub fn queue_submit_commands(queue: &nvn::Queue, count: usize, handles: *mut nvn
         command_buf.begin_recording();
 
         command_buf.set_render_targets(1, &render_target as _, 0 as _, 0 as _, 0 as _);
-        command_buf.set_scissor(0, 0, 1280, 720);
-        command_buf.set_viewport(0, 0, 1280, 720);
-        command_buf.clear_color(0, clear_color as _, nvn::ClearColorMask::new().with_rgba(true));
+        command_buf.set_scissor(0, 0, 420, 420);
+        command_buf.set_viewport(0, 0, 420, 420);
+        command_buf.clear_color(0, clear_color as _, nvn::ClearColorMask::new().with_r(true).with_g(true).with_b(true));
 
         // Stop recording, store our CommandHandle
         new_handles.push(command_buf.end_recording());
 
         // Call the original function with our new handle appended
-        original!()(queue, new_handles.len(), new_handles.as_mut_slice().as_mut_ptr() as _);
+        let new_count = new_handles.len();
+        let new_handle_ptr = new_handles.leak().as_mut_ptr();
+        original!()(queue, new_count, new_handle_ptr as _);
 
         // Cleanup
         command_buf.finalize();
         //mem_pool.finalize();
         unsafe { libc::free(command_mem as _) };
         unsafe { libc::free(control_mem as _) };
+        unsafe { libc::free(new_handle_ptr as _) };
+
     }
     else {
         original!()(queue, count, handles);
