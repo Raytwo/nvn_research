@@ -89,12 +89,12 @@ pub fn queue_submit_commands(queue: &nvn::Queue, count: usize, handles: *mut nvn
 
         // Create a MemoryPoolBuilder for our MemoryPool
         let mut mem_builder = nvn::MemoryPoolBuilder::new();
-        let command_mem = unsafe { libc::memalign(0x1000, 0x4000) } as _;
+        let command_mem = unsafe { libc::memalign(4, 0x1000) } as _;
 
         mem_builder.set_defaults();
         mem_builder.set_device(device);
         mem_builder.set_flags(nvn::MemoryPoolFlags::new().with_cpu_uncached(true).with_gpu_cached(true));
-        mem_builder.set_storage(command_mem, 0x4000);
+        mem_builder.set_storage(command_mem, 0x1000);
 
         let mut mem_pool = nvn::MemoryPool::new();
         assert_eq!(mem_pool.initialize(&mem_builder), true, "Couldn't initialize MemoryPool");
@@ -103,9 +103,9 @@ pub fn queue_submit_commands(queue: &nvn::Queue, count: usize, handles: *mut nvn
         let mut command_buf = nvn::CommandBuffer::new();    
         // Initialize the CommandBuffer
         assert_eq!(command_buf.initialize(device), true, "Couldn't initialize CommandBuffer");
-        let control_mem = unsafe { libc::memalign(0x1000, 0x4000) } as _;
-        command_buf.add_command_memory(&mem_pool, 0, 0x4000);
-        command_buf.add_control_memory(control_mem, 0x4000);
+        let control_mem = unsafe { libc::memalign(8, 0x1000) } as _;
+        command_buf.add_command_memory(&mem_pool, 0, 0x1000);
+        command_buf.add_control_memory(control_mem, 0x1000);
 
         let clear_color: &[f32;4] = &[1.0, 1.0, 0.0, 1.0];
 
@@ -116,10 +116,11 @@ pub fn queue_submit_commands(queue: &nvn::Queue, count: usize, handles: *mut nvn
         command_buf.set_render_targets(1, &render_target as _, 0 as _, 0 as _, 0 as _);
         command_buf.set_scissor(0, 0, 420, 420);
         command_buf.set_viewport(0, 0, 420, 420);
+        // TODO: Fix ClearColorMask
         command_buf.clear_color(0, clear_color as _, nvn::ClearColorMask::new().with_r(true).with_g(true).with_b(true));
 
-        // Stop recording, store our CommandHandle
-        new_handles.push(command_buf.end_recording());
+        // Stop recording, store our CommandHandle at the beginning of the vec
+        new_handles.insert(0, command_buf.end_recording());
 
         // Call the original function with our new handle appended
         let new_count = new_handles.len();
@@ -128,9 +129,14 @@ pub fn queue_submit_commands(queue: &nvn::Queue, count: usize, handles: *mut nvn
 
         // Cleanup
         command_buf.finalize();
-        //mem_pool.finalize();
+
+        if command_mem != 0 as _ {
+            // Crashes for seemingly no reason. Probably some syncing issue?
+            mem_pool.finalize();
+            unsafe { libc::free(control_mem as _) };
+        }
+        
         unsafe { libc::free(command_mem as _) };
-        unsafe { libc::free(control_mem as _) };
         unsafe { libc::free(new_handle_ptr as _) };
 
     }
