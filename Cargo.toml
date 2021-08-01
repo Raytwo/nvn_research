@@ -14,9 +14,10 @@ crate-type = ["cdylib"]
 skyline = { git = "https://github.com/ultimate-research/skyline-rs.git" }
 libc-nnsdk = { git = "https://github.com/ultimate-research/libc-nnsdk.git" }
 # https://github.com/blu-dev/nvn-rs
-nvn = { path = "../nvn-rs" }
+nvn = { path = "../nvn-rs", features = ["runtime"] }
 # nvn = { git = "https://github.com/Raytwo/nvn-rs" }
-
+lazy_static = "1.4.0"
+parking_lot = "0.11.1"
 [profile.dev]
 panic = "abort"
 
